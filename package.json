@@ -1,0 +1,12 @@
+{
+  "name": "transitiq-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TransitIQ - Smart Public Transport & Bus Tracking Platform (Pakistan)",
+  "scripts": {
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "seed": "cd backend && npm run seed"
+  }
+}
