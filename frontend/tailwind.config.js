@@ -12,6 +12,7 @@ export default {
         accent: {
           blue: '#38BDF8',
           purple: '#818CF8',
+          cyan: '#22D3EE',
         },
         status: {
           green: '#34D399',

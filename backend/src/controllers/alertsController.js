@@ -1,12 +1,13 @@
 import mongoose from 'mongoose';
 import Alert from '../models/Alert.js';
-import memoryStore, { generateId } from '../models/memoryStore.js';
+import { store, useMongo } from '../config/dbMode.js';
+import { generateId } from '../models/memoryStore.js';
 import { getIO } from '../sockets/broadcaster.js';
 
 export const getActiveAlerts = async (req, res) => {
   try {
     const now = new Date();
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const alerts = await Alert.find({ isActive: true, expiresAt: { $gt: now } })
         .populate('routeId', 'routeName colorCode')
         .populate('stopId', 'stopName')
@@ -16,13 +17,13 @@ export const getActiveAlerts = async (req, res) => {
       return res.status(200).json({ success: true, data: alerts, message: 'Active alerts retrieved', error: null });
     }
 
-    await memoryStore.initialize();
-    const active = memoryStore.alerts
+    await store.initialize();
+    const active = store.alerts
       .filter((a) => a.isActive && new Date(a.expiresAt) > now)
       .map((a) => {
-        const route = memoryStore.routes.find((r) => r._id.toString() === a.routeId?.toString());
-        const stop = memoryStore.stops.find((s) => s._id.toString() === a.stopId?.toString());
-        const publisher = memoryStore.users.find((u) => u._id.toString() === a.publishedBy?.toString());
+        const route = store.routes.find((r) => r._id.toString() === a.routeId?.toString());
+        const stop = store.stops.find((s) => s._id.toString() === a.stopId?.toString());
+        const publisher = store.users.find((u) => u._id.toString() === a.publishedBy?.toString());
         return {
           ...a,
           routeId: route ? { _id: route._id, routeName: route.routeName, colorCode: route.colorCode } : null,
@@ -46,7 +47,7 @@ export const createAlert = async (req, res) => {
 
     let alertData = null;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       alertData = await Alert.create({
         routeId: routeId || null,
         stopId: stopId || null,
@@ -58,7 +59,7 @@ export const createAlert = async (req, res) => {
         isActive: true,
       });
     } else {
-      await memoryStore.initialize();
+      await store.initialize();
       alertData = {
         _id: generateId(),
         routeId: routeId || null,
@@ -71,7 +72,7 @@ export const createAlert = async (req, res) => {
         isActive: true,
         createdAt: new Date(),
       };
-      memoryStore.alerts.unshift(alertData);
+      store.alerts.unshift(alertData);
     }
 
     // Broadcast alert via Socket.io to all connected passengers
@@ -101,17 +102,17 @@ export const deleteAlert = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const deleted = await Alert.findByIdAndUpdate(id, { isActive: false }, { new: true });
       if (!deleted) return res.status(404).json({ success: false, data: null, message: 'Alert not found', error: 'NOT_FOUND' });
       return res.status(200).json({ success: true, data: { id }, message: 'Alert deactivated', error: null });
     }
 
-    await memoryStore.initialize();
-    const idx = memoryStore.alerts.findIndex((a) => a._id.toString() === id.toString());
+    await store.initialize();
+    const idx = store.alerts.findIndex((a) => a._id.toString() === id.toString());
     if (idx === -1) return res.status(404).json({ success: false, data: null, message: 'Alert not found', error: 'NOT_FOUND' });
 
-    memoryStore.alerts[idx].isActive = false;
+    store.alerts[idx].isActive = false;
     return res.status(200).json({ success: true, data: { id }, message: 'Alert deactivated', error: null });
   } catch (error) {
     return res.status(500).json({ success: false, data: null, message: 'Failed to delete alert', error: error.message });

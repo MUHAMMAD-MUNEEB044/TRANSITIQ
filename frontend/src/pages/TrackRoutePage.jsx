@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Play, Square, Navigation, Radio } from 'lucide-react';
+import { ArrowLeft, Play, Square, Navigation, Radio, Bell } from 'lucide-react';
 import LiveMap from '../components/LiveMap.jsx';
 import StatusBadge from '../components/StatusBadge.jsx';
+import CrowdBadge from '../components/CrowdBadge.jsx';
 import { useRouteStore } from '../store/routeStore.js';
 import { useBusStore } from '../store/busStore.js';
 import { useAuthStore } from '../store/authStore.js';
+import { addJourneyEntry } from '../services/journeyStore.js';
 import getSocket from '../services/socket.js';
 import { toast } from '../store/toastStore.js';
 
@@ -21,6 +23,10 @@ export const TrackRoutePage = () => {
   const [selectedBusId, setSelectedBusId] = useState(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [notifyEnabled, setNotifyEnabled] = useState(
+    typeof Notification !== 'undefined' && Notification.permission === 'granted'
+  );
+  const notifiedRef = useRef({}); // `${busId}:${stop}` -> true (notify once per stay)
 
   const canSimulate = user && ['driver', 'operator', 'admin'].includes(user.role);
 
@@ -48,6 +54,62 @@ export const TrackRoutePage = () => {
   // Selected Bus details — no fabricated fallback vehicle
   const selectedBus = buses.find((b) => b._id === selectedBusId) || activeBuses[0] || null;
   const liveLoc = (selectedBus?._id && liveLocations[selectedBus._id]) || selectedBus?.currentLocation || null;
+
+  // Journey history: log an entry after 2+ minutes on the live tracking page
+  const stopsListCountRef = useRef(0);
+  useEffect(() => {
+    if (!selectedRoute || !selectedBus) return;
+    const startedAt = Date.now();
+    return () => {
+      const durationSec = Math.round((Date.now() - startedAt) / 1000);
+      if (durationSec >= 120) {
+        addJourneyEntry({
+          routeId: selectedRoute._id,
+          routeName: selectedRoute.routeName,
+          colorCode: selectedRoute.colorCode,
+          busNumber: selectedBus.busNumber,
+          durationSec,
+          stopsSeen: stopsListCountRef.current,
+        });
+      }
+    };
+  }, [selectedRoute?._id, selectedBus?._id]);
+
+  // Browser push notification when the followed bus is ~5 minutes away
+  useEffect(() => {
+    if (!notifyEnabled || !liveLoc || liveLoc.eta == null) return;
+    const chosenStop = liveLoc.nextStop;
+    if (!chosenStop || chosenStop === '—') return;
+    const key = `${selectedBus?._id}:${chosenStop}`;
+    if (liveLoc.eta <= 5 && liveLoc.eta >= 4 && !notifiedRef.current[key]) {
+      notifiedRef.current[key] = true;
+      try {
+        new Notification('TransitIQ', {
+          body: `🚌 Your bus arrives at ${chosenStop} in ~5 minutes`,
+          icon: '/bus-icon.svg',
+        });
+      } catch {
+        // Notification constructor unavailable — ignore
+      }
+    }
+    // Reset the notified flag once the bus has passed (eta rises again)
+    if (liveLoc.eta > 6) delete notifiedRef.current[key];
+  }, [notifyEnabled, liveLoc?.eta, liveLoc?.nextStop, selectedBus?._id]);
+
+  const handleEnableNotifications = async () => {
+    if (typeof Notification === 'undefined') {
+      toast.error('This browser does not support notifications.');
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      setNotifyEnabled(true);
+      return;
+    }
+    const perm = await Notification.requestPermission();
+    setNotifyEnabled(perm === 'granted');
+    if (perm === 'granted') toast.success('ETA alerts enabled for this route.');
+    else toast.info('Notifications were not permitted.');
+  };
 
   // Toggle GPS Simulation for interactive demonstration
   const handleToggleSimulation = () => {
@@ -86,6 +148,8 @@ export const TrackRoutePage = () => {
   }
 
   const stopsList = routeStops.length > 0 ? routeStops : selectedRoute?.stops || [];
+  stopsListCountRef.current = stopsList.length;
+  const busCrowd = selectedBus?._id ? liveLocations[selectedBus._id]?.crowdLevel : null;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -217,12 +281,30 @@ export const TrackRoutePage = () => {
         <div className="lg:col-span-4 glass-card p-5 flex flex-col max-h-[660px]">
           <div className="flex items-center justify-between mb-4 border-b border-border-subtle pb-3">
             <div>
-              <h3 className="font-syne font-bold text-base text-white">Stops & ETAs</h3>
+              <h3 className="font-syne font-bold text-base text-white flex items-center gap-2">
+                Stops & ETAs
+                <CrowdBadge level={busCrowd} />
+              </h3>
               <span className="text-[11px] font-mono text-text-muted">Live Arrival Forecast</span>
             </div>
-            <span className="px-2 py-0.5 rounded bg-surface-alt text-xs font-mono text-accent-blue">
-              {stopsList.length} Stops
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleEnableNotifications}
+                disabled={notifyEnabled}
+                className={`p-2 rounded-lg border transition-all ${
+                  notifyEnabled
+                    ? 'bg-status-green/15 border-status-green/40 text-status-green'
+                    : 'bg-surface-alt border-border-subtle text-text-muted hover:text-accent-blue hover:border-accent-blue/40'
+                }`}
+                title={notifyEnabled ? 'ETA alerts are on' : 'Get notified when your bus is 5 minutes away'}
+                aria-label="Enable ETA notifications"
+              >
+                <Bell className={`w-4 h-4 ${notifyEnabled ? 'fill-current' : ''}`} />
+              </button>
+              <span className="px-2 py-0.5 rounded bg-surface-alt text-xs font-mono text-accent-blue">
+                {stopsList.length} Stops
+              </span>
+            </div>
           </div>
 
           {/* Empty state when nothing is running */}

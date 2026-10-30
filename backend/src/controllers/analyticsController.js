@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import Trip from '../models/Trip.js';
 import Bus from '../models/Bus.js';
 import Route from '../models/Route.js';
-import memoryStore from '../models/memoryStore.js';
+import { store, useMongo } from '../config/dbMode.js';
 
 export const getOverview = async (req, res) => {
   try {
@@ -10,15 +10,15 @@ export const getOverview = async (req, res) => {
     let routes = [];
     let trips = [];
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       buses = await Bus.find();
       routes = await Route.find({ isActive: true });
       trips = await Trip.find();
     } else {
-      await memoryStore.initialize();
-      buses = memoryStore.buses;
-      routes = memoryStore.routes;
-      trips = memoryStore.trips;
+      await store.initialize();
+      buses = store.buses;
+      routes = store.routes;
+      trips = store.trips;
     }
 
     const totalBuses = buses.length;
@@ -66,13 +66,13 @@ export const getRoutePerformance = async (req, res) => {
     let tripsForRoute = [];
     let route = null;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       route = await Route.findById(id);
       tripsForRoute = await Trip.find({ routeId: id });
     } else {
-      await memoryStore.initialize();
-      route = memoryStore.routes.find((r) => r._id.toString() === id.toString());
-      tripsForRoute = memoryStore.trips.filter((t) => t.routeId?.toString() === id.toString());
+      await store.initialize();
+      route = store.routes.find((r) => r._id.toString() === id.toString());
+      tripsForRoute = store.trips.filter((t) => t.routeId?.toString() === id.toString());
     }
 
     const onTimeTrips = tripsForRoute.filter((t) => (t.delayMinutes || 0) <= 3).length;

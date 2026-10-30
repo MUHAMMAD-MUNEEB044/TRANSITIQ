@@ -7,7 +7,7 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import { ENV } from './src/config/env.js';
 import { connectDB } from './src/config/db.js';
-import memoryStore from './src/models/memoryStore.js';
+import { store, DB_MODE, getModeLabel } from './src/config/dbMode.js';
 import { socketManager } from './src/sockets/socketManager.js';
 import { setIO } from './src/sockets/broadcaster.js';
 
@@ -95,11 +95,12 @@ app.use((err, req, res, next) => {
 // Initialize database & server
 const startServer = async () => {
   await connectDB();
-  await memoryStore.initialize();
+  await store.initialize();
 
   const PORT = ENV.PORT;
   httpServer.listen(PORT, () => {
     console.log(`[TransitIQ] Server running on port ${PORT} in ${ENV.NODE_ENV} mode`);
+    console.log(`[TransitIQ] DB_MODE=${DB_MODE} → active store: ${getModeLabel()}`);
     console.log(`[TransitIQ] Client allowed origin: ${ENV.CLIENT_ORIGIN}`);
     console.log(`[TransitIQ] Pakistan Transit System active`);
     console.log(`[TransitIQ] WebSocket Engine listening`);

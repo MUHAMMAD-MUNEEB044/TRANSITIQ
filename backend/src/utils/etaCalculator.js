@@ -1,6 +1,6 @@
 import { haversineDistance } from './haversine.js';
 import Trip from '../models/Trip.js';
-import memoryStore from '../models/memoryStore.js';
+import { store, useMongo } from '../config/dbMode.js';
 import mongoose from 'mongoose';
 
 /**
@@ -32,12 +32,12 @@ export const calculateETA = async (
     let historicalSpeed = null;
 
     try {
-      const recentTrips = mongoose.connection.readyState === 1 && routeId
+      const recentTrips = useMongo() && routeId
         ? await Trip.find({ routeId, status: 'completed' })
             .sort({ endTime: -1 })
             .limit(5)
             .select('averageSpeed')
-        : memoryStore.trips.filter(
+        : store.trips.filter(
             (t) => t.routeId?.toString() === routeId?.toString() && t.status === 'completed' && t.averageSpeed
           ).slice(-5);
 

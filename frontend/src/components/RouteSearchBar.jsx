@@ -84,7 +84,7 @@ export const RouteSearchBar = ({ onSearch, initialFrom = '', initialTo = '', loa
 
           {/* Autocomplete Dropdown for From */}
           {activeInput === 'from' && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-surface-alt border border-border-subtle rounded-lg shadow-xl z-50 overflow-hidden">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-surface-alt border border-border-subtle rounded-lg shadow-2xl z-[70] overflow-y-auto max-h-[240px]">
               {getFilteredSuggestions(from).map((stopName, idx) => (
                 <button
                   key={idx}
@@ -103,17 +103,21 @@ export const RouteSearchBar = ({ onSearch, initialFrom = '', initialTo = '', loa
           )}
         </div>
 
-        {/* Swap Button */}
-        <button
-          type="button"
-          onClick={handleSwap}
-          id="btn-swap-stops"
-          className="self-center p-2 rounded-lg bg-surface-alt hover:bg-accent-blue/20 text-text-muted hover:text-accent-blue border border-border-subtle transition-all duration-200"
-          title="Swap origin and destination"
-          aria-label="Swap origin and destination"
-        >
-          <ArrowUpDown className="w-4 h-4" />
-        </button>
+        {/* Swap Button — cyan accent + hover tooltip */}
+        <div className="self-center relative group">
+          <button
+            type="button"
+            onClick={handleSwap}
+            id="btn-swap-stops"
+            className="p-2.5 rounded-lg bg-surface-alt hover:bg-accent-cyan/20 text-text-muted hover:text-accent-cyan border-2 border-accent-cyan/50 hover:border-accent-cyan shadow-md shadow-accent-cyan/10 transition-all duration-200 active:rotate-180"
+            aria-label="Swap stops"
+          >
+            <ArrowUpDown className="w-4 h-4" />
+          </button>
+          <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2 py-1 rounded-md bg-surface border border-border-subtle text-[10px] font-mono text-text-primary opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-[70] shadow-lg">
+            Swap stops
+          </span>
+        </div>
 
         {/* To Input */}
         <div className="flex-1 relative">
@@ -136,7 +140,7 @@ export const RouteSearchBar = ({ onSearch, initialFrom = '', initialTo = '', loa
 
           {/* Autocomplete Dropdown for To */}
           {activeInput === 'to' && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-surface-alt border border-border-subtle rounded-lg shadow-xl z-50 overflow-hidden">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-surface-alt border border-border-subtle rounded-lg shadow-2xl z-[70] overflow-y-auto max-h-[240px]">
               {getFilteredSuggestions(to).map((stopName, idx) => (
                 <button
                   key={idx}

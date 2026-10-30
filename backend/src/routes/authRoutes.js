@@ -31,6 +31,10 @@ const loginValidation = [
 // Routes
 router.post('/register', authRateLimiter, registerValidation, authController.register);
 router.post('/login', authRateLimiter, loginValidation, authController.login);
+router.post('/google', authRateLimiter, authController.googleAuth);
+router.get('/favorites', authenticateToken, authController.getFavorites);
+router.post('/favorites', authenticateToken, authController.addFavorite);
+router.delete('/favorites/:routeId', authenticateToken, authController.removeFavorite);
 router.post('/refresh', authController.refresh);
 router.post('/logout', authController.logout);
 router.get('/me', authenticateToken, authController.getMe);

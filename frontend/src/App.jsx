@@ -15,6 +15,7 @@ import RoutesListPage from './pages/RoutesListPage.jsx';
 import StopDetailPage from './pages/StopDetailPage.jsx';
 import AlertsPage from './pages/AlertsPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
+import MyJourneysPage from './pages/MyJourneysPage.jsx';
 
 // Driver Mobile Cockpit Pages
 import DriverSelectPage from './pages/driver/DriverSelectPage.jsx';
@@ -47,6 +48,7 @@ export function App() {
           <Route path="/routes" element={<RoutesListPage />} />
           <Route path="/stops/:stopId" element={<StopDetailPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/my-journeys" element={<MyJourneysPage />} />
           <Route path="/login" element={<LoginPage />} />
         </Route>
 

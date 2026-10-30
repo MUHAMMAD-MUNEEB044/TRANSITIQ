@@ -2,20 +2,21 @@ import mongoose from 'mongoose';
 import Stop from '../models/Stop.js';
 import Bus from '../models/Bus.js';
 import Route from '../models/Route.js';
-import memoryStore, { generateId } from '../models/memoryStore.js';
+import { store, useMongo } from '../config/dbMode.js';
+import { generateId } from '../models/memoryStore.js';
 import { calculateETA } from '../utils/etaCalculator.js';
 
 export const getAllStops = async (req, res) => {
   try {
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const stops = await Stop.find({ isActive: true }).populate('routeIds');
       return res.status(200).json({ success: true, data: stops, message: 'Stops retrieved', error: null });
     }
 
-    await memoryStore.initialize();
-    const enriched = memoryStore.stops.map((s) => ({
+    await store.initialize();
+    const enriched = store.stops.map((s) => ({
       ...s,
-      routeIds: memoryStore.routes.filter((r) => s.routeIds.includes(r._id.toString())),
+      routeIds: store.routes.filter((r) => s.routeIds.includes(r._id.toString())),
     }));
 
     return res.status(200).json({ success: true, data: enriched, message: 'Stops retrieved', error: null });
@@ -31,7 +32,7 @@ export const getStopById = async (req, res) => {
     let routes = [];
     let buses = [];
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       stop = await Stop.findById(id).populate('routeIds');
       if (!stop) return res.status(404).json({ success: false, data: null, message: 'Stop not found', error: 'NOT_FOUND' });
 
@@ -39,12 +40,12 @@ export const getStopById = async (req, res) => {
       const routeIds = routes.map((r) => r._id);
       buses = await Bus.find({ currentRoute: { $in: routeIds } });
     } else {
-      await memoryStore.initialize();
-      stop = memoryStore.stops.find((s) => s._id.toString() === id.toString());
+      await store.initialize();
+      stop = store.stops.find((s) => s._id.toString() === id.toString());
       if (!stop) return res.status(404).json({ success: false, data: null, message: 'Stop not found', error: 'NOT_FOUND' });
 
-      routes = memoryStore.routes.filter((r) => stop.routeIds.includes(r._id.toString()));
-      buses = memoryStore.buses.filter((b) => stop.routeIds.includes(b.currentRoute?.toString()));
+      routes = store.routes.filter((r) => stop.routeIds.includes(r._id.toString()));
+      buses = store.buses.filter((b) => stop.routeIds.includes(b.currentRoute?.toString()));
     }
 
     // Compute approaching buses with live ETA for this stop
@@ -95,7 +96,7 @@ export const createStop = async (req, res) => {
   try {
     const { stopName, lat, lng, routeIds, stopOrder } = req.body;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const stop = await Stop.create({
         stopName,
         location: {
@@ -109,7 +110,7 @@ export const createStop = async (req, res) => {
       return res.status(201).json({ success: true, data: stop, message: 'Stop created', error: null });
     }
 
-    await memoryStore.initialize();
+    await store.initialize();
     const newStop = {
       _id: generateId(),
       stopName,
@@ -122,7 +123,7 @@ export const createStop = async (req, res) => {
       isActive: true,
       createdAt: new Date(),
     };
-    memoryStore.stops.push(newStop);
+    store.stops.push(newStop);
 
     return res.status(201).json({ success: true, data: newStop, message: 'Stop created', error: null });
   } catch (error) {
@@ -135,7 +136,7 @@ export const updateStop = async (req, res) => {
     const { id } = req.params;
     const { stopName, lat, lng, routeIds, stopOrder, isActive } = req.body;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const updatePayload = {};
       if (stopName !== undefined) updatePayload.stopName = stopName;
       if (lat !== undefined && lng !== undefined) {
@@ -150,19 +151,19 @@ export const updateStop = async (req, res) => {
       return res.status(200).json({ success: true, data: stop, message: 'Stop updated', error: null });
     }
 
-    await memoryStore.initialize();
-    const idx = memoryStore.stops.findIndex((s) => s._id.toString() === id.toString());
+    await store.initialize();
+    const idx = store.stops.findIndex((s) => s._id.toString() === id.toString());
     if (idx === -1) return res.status(404).json({ success: false, data: null, message: 'Stop not found', error: 'NOT_FOUND' });
 
-    if (stopName) memoryStore.stops[idx].stopName = stopName;
+    if (stopName) store.stops[idx].stopName = stopName;
     if (lat !== undefined && lng !== undefined) {
-      memoryStore.stops[idx].location.coordinates = [lng, lat];
+      store.stops[idx].location.coordinates = [lng, lat];
     }
-    if (routeIds) memoryStore.stops[idx].routeIds = routeIds;
-    if (stopOrder !== undefined) memoryStore.stops[idx].stopOrder = stopOrder;
-    if (isActive !== undefined) memoryStore.stops[idx].isActive = isActive;
+    if (routeIds) store.stops[idx].routeIds = routeIds;
+    if (stopOrder !== undefined) store.stops[idx].stopOrder = stopOrder;
+    if (isActive !== undefined) store.stops[idx].isActive = isActive;
 
-    return res.status(200).json({ success: true, data: memoryStore.stops[idx], message: 'Stop updated', error: null });
+    return res.status(200).json({ success: true, data: store.stops[idx], message: 'Stop updated', error: null });
   } catch (error) {
     return res.status(500).json({ success: false, data: null, message: 'Failed to update stop', error: error.message });
   }
@@ -172,7 +173,7 @@ export const deleteStop = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const stop = await Stop.findByIdAndUpdate(id, { isActive: false }, { new: true });
       if (!stop) return res.status(404).json({ success: false, data: null, message: 'Stop not found', error: 'NOT_FOUND' });
       // Detach from any routes that reference it
@@ -180,12 +181,12 @@ export const deleteStop = async (req, res) => {
       return res.status(200).json({ success: true, data: stop, message: 'Stop deactivated', error: null });
     }
 
-    await memoryStore.initialize();
-    const stop = memoryStore.stops.find((s) => s._id.toString() === id.toString());
+    await store.initialize();
+    const stop = store.stops.find((s) => s._id.toString() === id.toString());
     if (!stop) return res.status(404).json({ success: false, data: null, message: 'Stop not found', error: 'NOT_FOUND' });
 
     stop.isActive = false;
-    for (const route of memoryStore.routes) {
+    for (const route of store.routes) {
       if (route.stops) route.stops = route.stops.filter((s) => s.stopId?.toString() !== id.toString());
     }
 

@@ -2,22 +2,23 @@ import mongoose from 'mongoose';
 import Route from '../models/Route.js';
 import Stop from '../models/Stop.js';
 import Bus from '../models/Bus.js';
-import memoryStore, { generateId } from '../models/memoryStore.js';
+import { store, useMongo } from '../config/dbMode.js';
+import { generateId } from '../models/memoryStore.js';
 import { haversineDistance } from '../utils/haversine.js';
 import { calculateETA } from '../utils/etaCalculator.js';
 
 export const getAllRoutes = async (req, res) => {
   try {
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const routes = await Route.find({ isActive: true }).populate('stops.stopId');
       return res.status(200).json({ success: true, data: routes, message: 'Routes retrieved', error: null });
     }
 
-    await memoryStore.initialize();
-    const enrichedRoutes = memoryStore.routes.map((r) => {
+    await store.initialize();
+    const enrichedRoutes = store.routes.map((r) => {
       const enrichedStops = r.stops.map((s) => ({
         ...s,
-        stopId: memoryStore.stops.find((st) => st._id.toString() === s.stopId?.toString()) || s.stopId,
+        stopId: store.stops.find((st) => st._id.toString() === s.stopId?.toString()) || s.stopId,
       }));
       return { ...r, stops: enrichedStops };
     });
@@ -32,7 +33,7 @@ export const getRouteById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const route = await Route.findById(id).populate('stops.stopId');
       if (!route) return res.status(404).json({ success: false, data: null, message: 'Route not found', error: 'NOT_FOUND' });
 
@@ -41,16 +42,16 @@ export const getRouteById = async (req, res) => {
       return res.status(200).json({ success: true, data: { route, activeBuses }, message: 'Route retrieved', error: null });
     }
 
-    await memoryStore.initialize();
-    const route = memoryStore.routes.find((r) => r._id.toString() === id.toString());
+    await store.initialize();
+    const route = store.routes.find((r) => r._id.toString() === id.toString());
     if (!route) return res.status(404).json({ success: false, data: null, message: 'Route not found', error: 'NOT_FOUND' });
 
     const enrichedStops = route.stops.map((s) => ({
       ...s,
-      stopId: memoryStore.stops.find((st) => st._id.toString() === s.stopId?.toString()) || s.stopId,
+      stopId: store.stops.find((st) => st._id.toString() === s.stopId?.toString()) || s.stopId,
     }));
 
-    const activeBuses = memoryStore.buses.filter((b) => b.currentRoute?.toString() === id.toString());
+    const activeBuses = store.buses.filter((b) => b.currentRoute?.toString() === id.toString());
 
     return res.status(200).json({
       success: true,
@@ -70,18 +71,18 @@ export const getRouteStopsWithETA = async (req, res) => {
     let stopsList = [];
     let busesOnRoute = [];
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       route = await Route.findById(id).populate('stops.stopId');
       if (!route) return res.status(404).json({ success: false, data: null, message: 'Route not found', error: 'NOT_FOUND' });
       busesOnRoute = await Bus.find({ currentRoute: id });
       stopsList = route.stops.map((s) => s.stopId);
     } else {
-      await memoryStore.initialize();
-      route = memoryStore.routes.find((r) => r._id.toString() === id.toString());
+      await store.initialize();
+      route = store.routes.find((r) => r._id.toString() === id.toString());
       if (!route) return res.status(404).json({ success: false, data: null, message: 'Route not found', error: 'NOT_FOUND' });
-      busesOnRoute = memoryStore.buses.filter((b) => b.currentRoute?.toString() === id.toString());
+      busesOnRoute = store.buses.filter((b) => b.currentRoute?.toString() === id.toString());
       stopsList = route.stops.map(
-        (s) => memoryStore.stops.find((st) => st._id.toString() === s.stopId?.toString()) || s.stopId
+        (s) => store.stops.find((st) => st._id.toString() === s.stopId?.toString()) || s.stopId
       );
     }
 
@@ -132,19 +133,19 @@ export const searchRoutes = async (req, res) => {
   try {
     const { from, to, fromLat, fromLng, toLat, toLng } = req.query;
 
-    await memoryStore.initialize();
+    await store.initialize();
     let allStops = [];
     let allRoutes = [];
     let allBuses = [];
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       allStops = await Stop.find({ isActive: true });
       allRoutes = await Route.find({ isActive: true });
       allBuses = await Bus.find();
     } else {
-      allStops = memoryStore.stops;
-      allRoutes = memoryStore.routes;
-      allBuses = memoryStore.buses;
+      allStops = store.stops;
+      allRoutes = store.routes;
+      allBuses = store.buses;
     }
 
     // Step 1: Identify origin candidate stops
@@ -290,7 +291,7 @@ export const createRoute = async (req, res) => {
   try {
     const { routeName, startLocation, destination, stops, totalDistance, estimatedDuration, colorCode } = req.body;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const newRoute = await Route.create({
         routeName,
         startLocation,
@@ -303,7 +304,7 @@ export const createRoute = async (req, res) => {
       return res.status(201).json({ success: true, data: newRoute, message: 'Route created', error: null });
     }
 
-    await memoryStore.initialize();
+    await store.initialize();
     const newRoute = {
       _id: generateId(),
       routeName,
@@ -317,7 +318,7 @@ export const createRoute = async (req, res) => {
       colorCode: colorCode || '#38BDF8',
       createdAt: new Date(),
     };
-    memoryStore.routes.push(newRoute);
+    store.routes.push(newRoute);
 
     return res.status(201).json({ success: true, data: newRoute, message: 'Route created', error: null });
   } catch (error) {
@@ -330,18 +331,18 @@ export const updateRoute = async (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const updated = await Route.findByIdAndUpdate(id, updateData, { new: true });
       if (!updated) return res.status(404).json({ success: false, data: null, message: 'Route not found', error: 'NOT_FOUND' });
       return res.status(200).json({ success: true, data: updated, message: 'Route updated', error: null });
     }
 
-    await memoryStore.initialize();
-    const idx = memoryStore.routes.findIndex((r) => r._id.toString() === id.toString());
+    await store.initialize();
+    const idx = store.routes.findIndex((r) => r._id.toString() === id.toString());
     if (idx === -1) return res.status(404).json({ success: false, data: null, message: 'Route not found', error: 'NOT_FOUND' });
 
-    memoryStore.routes[idx] = { ...memoryStore.routes[idx], ...updateData };
-    return res.status(200).json({ success: true, data: memoryStore.routes[idx], message: 'Route updated', error: null });
+    store.routes[idx] = { ...store.routes[idx], ...updateData };
+    return res.status(200).json({ success: true, data: store.routes[idx], message: 'Route updated', error: null });
   } catch (error) {
     return res.status(500).json({ success: false, data: null, message: 'Failed to update route', error: error.message });
   }
@@ -351,17 +352,17 @@ export const deleteRoute = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const deleted = await Route.findByIdAndDelete(id);
       if (!deleted) return res.status(404).json({ success: false, data: null, message: 'Route not found', error: 'NOT_FOUND' });
       return res.status(200).json({ success: true, data: { id }, message: 'Route deleted', error: null });
     }
 
-    await memoryStore.initialize();
-    const idx = memoryStore.routes.findIndex((r) => r._id.toString() === id.toString());
+    await store.initialize();
+    const idx = store.routes.findIndex((r) => r._id.toString() === id.toString());
     if (idx === -1) return res.status(404).json({ success: false, data: null, message: 'Route not found', error: 'NOT_FOUND' });
 
-    memoryStore.routes.splice(idx, 1);
+    store.routes.splice(idx, 1);
     return res.status(200).json({ success: true, data: { id }, message: 'Route deleted', error: null });
   } catch (error) {
     return res.status(500).json({ success: false, data: null, message: 'Failed to delete route', error: error.message });

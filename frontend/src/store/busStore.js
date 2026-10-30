@@ -31,7 +31,7 @@ export const useBusStore = create((set, get) => ({
   },
 
   updateBusLocation: (update) => {
-    const { busId, lat, lng, speed, heading, eta, nextStop, isSimulated } = update;
+    const { busId, lat, lng, speed, heading, eta, nextStop, isSimulated, crowdLevel } = update;
     set((state) => ({
       liveLocations: {
         ...state.liveLocations,
@@ -42,6 +42,7 @@ export const useBusStore = create((set, get) => ({
           heading: heading ?? 0,
           eta: eta ?? 4,
           nextStop: nextStop || 'Next Stop',
+          crowdLevel: crowdLevel || state.liveLocations[busId]?.crowdLevel || null,
           isSimulated: !!isSimulated,
           updatedAt: new Date().toISOString(),
         },
@@ -51,6 +52,17 @@ export const useBusStore = create((set, get) => ({
         ...state.gpsLostBuses,
         [busId]: false,
       },
+    }));
+  },
+
+  setCrowdLevel: (busId, crowdLevel) => {
+    set((state) => ({
+      liveLocations: state.liveLocations[busId]
+        ? {
+            ...state.liveLocations,
+            [busId]: { ...state.liveLocations[busId], crowdLevel },
+          }
+        : state.liveLocations,
     }));
   },
 

@@ -2,20 +2,21 @@ import mongoose from 'mongoose';
 import Driver from '../models/Driver.js';
 import User from '../models/User.js';
 import Bus from '../models/Bus.js';
-import memoryStore, { generateId } from '../models/memoryStore.js';
+import { store, useMongo } from '../config/dbMode.js';
+import { generateId } from '../models/memoryStore.js';
 
 export const getAllDrivers = async (req, res) => {
   try {
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const drivers = await Driver.find().populate('userId', 'name email role').populate('assignedBus').populate('currentTrip');
       return res.status(200).json({ success: true, data: drivers, message: 'Drivers retrieved', error: null });
     }
 
-    await memoryStore.initialize();
-    const enriched = memoryStore.drivers.map((d) => {
-      const user = memoryStore.users.find((u) => u._id.toString() === d.userId?.toString());
-      const assignedBus = memoryStore.buses.find((b) => b._id.toString() === d.assignedBus?.toString()) || null;
-      const currentTrip = memoryStore.trips.find((t) => t._id.toString() === d.currentTrip?.toString()) || null;
+    await store.initialize();
+    const enriched = store.drivers.map((d) => {
+      const user = store.users.find((u) => u._id.toString() === d.userId?.toString());
+      const assignedBus = store.buses.find((b) => b._id.toString() === d.assignedBus?.toString()) || null;
+      const currentTrip = store.trips.find((t) => t._id.toString() === d.currentTrip?.toString()) || null;
       return {
         ...d,
         userId: user ? { _id: user._id, name: user.name, email: user.email, role: user.role } : null,
@@ -33,19 +34,19 @@ export const getAllDrivers = async (req, res) => {
 export const getDriverById = async (req, res) => {
   try {
     const { id } = req.params;
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const driver = await Driver.findById(id).populate('userId', 'name email role').populate('assignedBus').populate('currentTrip');
       if (!driver) return res.status(404).json({ success: false, data: null, message: 'Driver not found', error: 'NOT_FOUND' });
       return res.status(200).json({ success: true, data: driver, message: 'Driver details retrieved', error: null });
     }
 
-    await memoryStore.initialize();
-    const driver = memoryStore.drivers.find((d) => d._id.toString() === id.toString());
+    await store.initialize();
+    const driver = store.drivers.find((d) => d._id.toString() === id.toString());
     if (!driver) return res.status(404).json({ success: false, data: null, message: 'Driver not found', error: 'NOT_FOUND' });
 
-    const user = memoryStore.users.find((u) => u._id.toString() === driver.userId?.toString());
-    const assignedBus = memoryStore.buses.find((b) => b._id.toString() === driver.assignedBus?.toString()) || null;
-    const currentTrip = memoryStore.trips.find((t) => t._id.toString() === driver.currentTrip?.toString()) || null;
+    const user = store.users.find((u) => u._id.toString() === driver.userId?.toString());
+    const assignedBus = store.buses.find((b) => b._id.toString() === driver.assignedBus?.toString()) || null;
+    const currentTrip = store.trips.find((t) => t._id.toString() === driver.currentTrip?.toString()) || null;
 
     return res.status(200).json({
       success: true,
@@ -67,7 +68,7 @@ export const createDriver = async (req, res) => {
   try {
     const { userId, name, phone, licenseNumber, assignedBus } = req.body;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const driver = await Driver.create({
         userId,
         name,
@@ -79,7 +80,7 @@ export const createDriver = async (req, res) => {
       return res.status(201).json({ success: true, data: driver, message: 'Driver registered', error: null });
     }
 
-    await memoryStore.initialize();
+    await store.initialize();
     const newDriver = {
       _id: generateId(),
       userId,
@@ -92,7 +93,7 @@ export const createDriver = async (req, res) => {
       totalTrips: 0,
       createdAt: new Date(),
     };
-    memoryStore.drivers.push(newDriver);
+    store.drivers.push(newDriver);
 
     return res.status(201).json({ success: true, data: newDriver, message: 'Driver registered', error: null });
   } catch (error) {
@@ -105,7 +106,7 @@ export const updateDriver = async (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const updated = await Driver.findByIdAndUpdate(id, updateData, { new: true });
       if (!updated) return res.status(404).json({ success: false, data: null, message: 'Driver not found', error: 'NOT_FOUND' });
 
@@ -116,18 +117,18 @@ export const updateDriver = async (req, res) => {
       return res.status(200).json({ success: true, data: updated, message: 'Driver updated', error: null });
     }
 
-    await memoryStore.initialize();
-    const idx = memoryStore.drivers.findIndex((d) => d._id.toString() === id.toString());
+    await store.initialize();
+    const idx = store.drivers.findIndex((d) => d._id.toString() === id.toString());
     if (idx === -1) return res.status(404).json({ success: false, data: null, message: 'Driver not found', error: 'NOT_FOUND' });
 
-    memoryStore.drivers[idx] = { ...memoryStore.drivers[idx], ...updateData };
+    store.drivers[idx] = { ...store.drivers[idx], ...updateData };
 
     if (updateData.assignedBus) {
-      const bIdx = memoryStore.buses.findIndex((b) => b._id.toString() === updateData.assignedBus.toString());
-      if (bIdx !== -1) memoryStore.buses[bIdx].currentDriver = id;
+      const bIdx = store.buses.findIndex((b) => b._id.toString() === updateData.assignedBus.toString());
+      if (bIdx !== -1) store.buses[bIdx].currentDriver = id;
     }
 
-    return res.status(200).json({ success: true, data: memoryStore.drivers[idx], message: 'Driver updated', error: null });
+    return res.status(200).json({ success: true, data: store.drivers[idx], message: 'Driver updated', error: null });
   } catch (error) {
     return res.status(500).json({ success: false, data: null, message: 'Failed to update driver', error: error.message });
   }
@@ -137,7 +138,7 @@ export const deleteDriver = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const deleted = await Driver.findByIdAndDelete(id);
       if (!deleted) return res.status(404).json({ success: false, data: null, message: 'Driver not found', error: 'NOT_FOUND' });
       if (deleted.assignedBus) {
@@ -146,13 +147,13 @@ export const deleteDriver = async (req, res) => {
       return res.status(200).json({ success: true, data: null, message: 'Driver removed', error: null });
     }
 
-    await memoryStore.initialize();
-    const idx = memoryStore.drivers.findIndex((d) => d._id.toString() === id.toString());
+    await store.initialize();
+    const idx = store.drivers.findIndex((d) => d._id.toString() === id.toString());
     if (idx === -1) return res.status(404).json({ success: false, data: null, message: 'Driver not found', error: 'NOT_FOUND' });
 
-    const [removed] = memoryStore.drivers.splice(idx, 1);
+    const [removed] = store.drivers.splice(idx, 1);
     if (removed.assignedBus) {
-      const bus = memoryStore.buses.find((b) => b._id.toString() === removed.assignedBus.toString());
+      const bus = store.buses.find((b) => b._id.toString() === removed.assignedBus.toString());
       if (bus) bus.currentDriver = null;
     }
 

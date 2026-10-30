@@ -9,6 +9,10 @@ export const useAuthStore = create((set) => ({
   loading: false,
   error: null,
 
+  // Shared by email/password login and Google OAuth
+  setSession: (user, accessToken) =>
+    set({ user, token: accessToken, isAuthenticated: true, loading: false, error: null }),
+
   login: async (email, password) => {
     set({ loading: true, error: null });
     try {

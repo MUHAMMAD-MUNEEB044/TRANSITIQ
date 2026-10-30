@@ -4,7 +4,8 @@ import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 import Driver from '../models/Driver.js';
 import { ENV } from '../config/env.js';
-import memoryStore, { generateId } from '../models/memoryStore.js';
+import { store, useMongo } from '../config/dbMode.js';
+import { generateId } from '../models/memoryStore.js';
 
 // Helper to generate access and refresh tokens
 const generateTokens = (user) => {
@@ -38,7 +39,7 @@ export const register = async (req, res) => {
     // honored exclusively for the very first account on a fresh install so a
     // bootstrap admin can be created; after that it is ignored.
     let assignedRole = 'passenger';
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const userCount = await User.countDocuments();
       if (userCount === 0 && role && ['passenger', 'driver', 'operator', 'admin'].includes(role)) {
         assignedRole = role;
@@ -85,11 +86,11 @@ export const register = async (req, res) => {
     }
 
     // Memory store fallback
-    await memoryStore.initialize();
-    if (memoryStore.users.length === 0 && role && ['passenger', 'driver', 'operator', 'admin'].includes(role)) {
+    await store.initialize();
+    if (store.users.length === 0 && role && ['passenger', 'driver', 'operator', 'admin'].includes(role)) {
       assignedRole = role;
     }
-    const existing = memoryStore.users.find((u) => u.email === lowerEmail);
+    const existing = store.users.find((u) => u.email === lowerEmail);
     if (existing) {
       return res.status(400).json({
         success: false,
@@ -113,7 +114,7 @@ export const register = async (req, res) => {
 
     const { accessToken, refreshToken } = generateTokens(newUser);
     newUser.refreshToken = refreshToken;
-    memoryStore.users.push(newUser);
+    store.users.push(newUser);
 
     res.cookie('refreshToken', refreshToken, refreshCookieOptions);
 
@@ -146,7 +147,7 @@ export const login = async (req, res) => {
     const { email, password } = req.body;
     const lowerEmail = email.toLowerCase();
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const user = await User.findOne({ email: lowerEmail });
       if (!user) {
         return res.status(401).json({
@@ -199,8 +200,8 @@ export const login = async (req, res) => {
     }
 
     // Memory Store
-    await memoryStore.initialize();
-    const user = memoryStore.users.find((u) => u.email === lowerEmail);
+    await store.initialize();
+    const user = store.users.find((u) => u.email === lowerEmail);
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -225,10 +226,10 @@ export const login = async (req, res) => {
 
     let driverInfo = null;
     if (user.role === 'driver') {
-      driverInfo = memoryStore.drivers.find((d) => d.userId.toString() === user._id.toString());
+      driverInfo = store.drivers.find((d) => d.userId.toString() === user._id.toString());
       if (driverInfo) {
-        const assignedBus = memoryStore.buses.find((b) => b._id.toString() === driverInfo.assignedBus?.toString());
-        const currentTrip = memoryStore.trips.find((t) => t._id.toString() === driverInfo.currentTrip?.toString());
+        const assignedBus = store.buses.find((b) => b._id.toString() === driverInfo.assignedBus?.toString());
+        const currentTrip = store.trips.find((t) => t._id.toString() === driverInfo.currentTrip?.toString());
         driverInfo = { ...driverInfo, assignedBus, currentTrip };
       }
     }
@@ -284,7 +285,7 @@ export const refresh = async (req, res) => {
         });
       }
 
-      if (mongoose.connection.readyState === 1) {
+      if (useMongo()) {
         const user = await User.findById(decoded.id);
         if (!user || user.refreshToken !== refreshToken) {
           return res.status(403).json({
@@ -318,8 +319,8 @@ export const refresh = async (req, res) => {
       }
 
       // Memory store
-      await memoryStore.initialize();
-      const user = memoryStore.users.find((u) => u._id.toString() === decoded.id.toString());
+      await store.initialize();
+      const user = store.users.find((u) => u._id.toString() === decoded.id.toString());
       if (!user || user.refreshToken !== refreshToken) {
         return res.status(403).json({
           success: false,
@@ -363,13 +364,13 @@ export const logout = async (req, res) => {
   try {
     const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       if (refreshToken) {
         await User.updateOne({ refreshToken }, { $set: { refreshToken: null } });
       }
     } else {
-      await memoryStore.initialize();
-      const u = memoryStore.users.find((user) => user.refreshToken === refreshToken);
+      await store.initialize();
+      const u = store.users.find((user) => user.refreshToken === refreshToken);
       if (u) u.refreshToken = null;
     }
 
@@ -399,7 +400,7 @@ export const getMe = async (req, res) => {
   try {
     let driverInfo = null;
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       if (req.user.role === 'driver') {
         driverInfo = await Driver.findOne({ userId: req.user._id })
           .populate('assignedBus')
@@ -407,10 +408,10 @@ export const getMe = async (req, res) => {
       }
     } else {
       if (req.user.role === 'driver') {
-        driverInfo = memoryStore.drivers.find((d) => d.userId.toString() === req.user._id.toString());
+        driverInfo = store.drivers.find((d) => d.userId.toString() === req.user._id.toString());
         if (driverInfo) {
-          const assignedBus = memoryStore.buses.find((b) => b._id.toString() === driverInfo.assignedBus?.toString());
-          const currentTrip = memoryStore.trips.find((t) => t._id.toString() === driverInfo.currentTrip?.toString());
+          const assignedBus = store.buses.find((b) => b._id.toString() === driverInfo.assignedBus?.toString());
+          const currentTrip = store.trips.find((t) => t._id.toString() === driverInfo.currentTrip?.toString());
           driverInfo = { ...driverInfo, assignedBus, currentTrip };
         }
       }
@@ -442,13 +443,13 @@ export const getMe = async (req, res) => {
 
 export const getAllUsers = async (req, res) => {
   try {
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const users = await User.find().select('-passwordHash');
       return res.status(200).json({ success: true, data: users, message: 'Users retrieved', error: null });
     }
 
-    await memoryStore.initialize();
-    const users = memoryStore.users.map(({ passwordHash, ...u }) => u);
+    await store.initialize();
+    const users = store.users.map(({ passwordHash, ...u }) => u);
     return res.status(200).json({ success: true, data: users, message: 'Users retrieved', error: null });
   } catch (error) {
     return res.status(500).json({ success: false, data: null, message: 'Failed to fetch users', error: error.message });
@@ -464,21 +465,174 @@ export const updateUserRole = async (req, res) => {
       return res.status(400).json({ success: false, data: null, message: 'Invalid role', error: 'INVALID_ROLE' });
     }
 
-    if (mongoose.connection.readyState === 1) {
+    if (useMongo()) {
       const updated = await User.findByIdAndUpdate(id, { role }, { new: true }).select('-passwordHash');
       if (!updated) return res.status(404).json({ success: false, data: null, message: 'User not found', error: 'NOT_FOUND' });
       return res.status(200).json({ success: true, data: updated, message: 'Role updated', error: null });
     }
 
-    await memoryStore.initialize();
-    const idx = memoryStore.users.findIndex((u) => u._id.toString() === id.toString());
+    await store.initialize();
+    const idx = store.users.findIndex((u) => u._id.toString() === id.toString());
     if (idx === -1) return res.status(404).json({ success: false, data: null, message: 'User not found', error: 'NOT_FOUND' });
 
-    memoryStore.users[idx].role = role;
-    const { passwordHash, ...safeUser } = memoryStore.users[idx];
+    store.users[idx].role = role;
+    const { passwordHash, ...safeUser } = store.users[idx];
     return res.status(200).json({ success: true, data: safeUser, message: 'Role updated', error: null });
   } catch (error) {
     return res.status(500).json({ success: false, data: null, message: 'Failed to update role', error: error.message });
   }
 };
 
+
+// ─── Google OAuth (Firebase ID token verification) ───────────────────────────
+
+const issueSession = (res, user) => {
+  const { accessToken, refreshToken } = generateTokens(user);
+  user.refreshToken = refreshToken;
+  res.cookie('refreshToken', refreshToken, refreshCookieOptions);
+  return {
+    user: { id: user._id, name: user.name, email: user.email, role: user.role, photoURL: user.photoURL || null },
+    accessToken,
+  };
+};
+
+/**
+ * POST /api/auth/google
+ * Body/header: Firebase ID token (Authorization: Bearer <idToken> or { idToken }).
+ * Verifies the token with Firebase Admin, auto-provisions a passenger account,
+ * and issues the same session tokens as email/password login.
+ */
+export const googleAuth = async (req, res) => {
+  try {
+    const headerToken = req.headers.authorization?.replace('Bearer ', '');
+    const idToken = headerToken || req.body?.idToken;
+    if (!idToken) {
+      return res.status(400).json({ success: false, data: null, message: 'Firebase ID token required', error: 'TOKEN_REQUIRED' });
+    }
+
+    const { getFirebaseAdmin } = await import('../config/firebaseAdmin.js');
+    let admin;
+    try {
+      admin = await getFirebaseAdmin();
+    } catch {
+      return res.status(503).json({ success: false, data: null, message: 'Google Sign-In is not configured on this server.', error: 'FIREBASE_UNAVAILABLE' });
+    }
+
+    let decoded;
+    try {
+      decoded = await admin.auth().verifyIdToken(idToken);
+    } catch (err) {
+      return res.status(401).json({ success: false, data: null, message: 'Invalid or expired Google token.', error: 'INVALID_GOOGLE_TOKEN' });
+    }
+
+    const { uid, email, name: displayName, picture } = decoded;
+    if (!email) {
+      return res.status(400).json({ success: false, data: null, message: 'Google account has no email address.', error: 'EMAIL_MISSING' });
+    }
+
+    // Google OAuth never assigns privileged roles — always passenger.
+    if (useMongo()) {
+      let user = await User.findOne({ $or: [{ email: email.toLowerCase() }, { firebaseUid: uid }] });
+      if (!user) {
+        user = await User.create({
+          name: displayName || email.split('@')[0],
+          email: email.toLowerCase(),
+          passwordHash: await User.hashPassword(generateId() + generateId()), // unguessable random
+          role: 'passenger',
+          firebaseUid: uid,
+          photoURL: picture || null,
+        });
+      } else {
+        if (!user.firebaseUid) user.firebaseUid = uid;
+        if (picture && !user.photoURL) user.photoURL = picture;
+        await user.save();
+      }
+      const payload = issueSession(res, user);
+      return res.status(200).json({ success: true, message: 'Google sign-in successful.', data: payload, error: null });
+    }
+
+    await store.initialize();
+    let user = store.users.find((u) => u.email === email.toLowerCase() || u.firebaseUid === uid);
+    if (!user) {
+      const salt = await bcrypt.genSalt(12);
+      user = {
+        _id: generateId(),
+        name: displayName || email.split('@')[0],
+        email: email.toLowerCase(),
+        passwordHash: await bcrypt.hash(generateId() + generateId(), salt),
+        role: 'passenger',
+        firebaseUid: uid,
+        photoURL: picture || null,
+        refreshToken: null,
+        favorites: [],
+        createdAt: new Date(),
+      };
+      store.users.push(user);
+      if (store.persistNow) await store.persistNow();
+    } else {
+      if (!user.firebaseUid) user.firebaseUid = uid;
+      if (picture && !user.photoURL) user.photoURL = picture;
+    }
+
+    const payload = issueSession(res, user);
+    return res.status(200).json({ success: true, message: 'Google sign-in successful.', data: payload, error: null });
+  } catch (error) {
+    return res.status(500).json({ success: false, data: null, message: 'Google sign-in failed.', error: error.message });
+  }
+};
+
+// ─── Favorite routes (passengers) ────────────────────────────────────────────
+
+export const getFavorites = async (req, res) => {
+  try {
+    if (useMongo()) {
+      const user = await User.findById(req.user._id).select('favorites');
+      return res.status(200).json({ success: true, data: { favorites: user?.favorites || [] }, message: 'Favorites retrieved', error: null });
+    }
+    await store.initialize();
+    const user = store.users.find((u) => u._id.toString() === req.user._id.toString());
+    return res.status(200).json({ success: true, data: { favorites: user?.favorites || [] }, message: 'Favorites retrieved', error: null });
+  } catch (error) {
+    return res.status(500).json({ success: false, data: null, message: 'Failed to fetch favorites', error: error.message });
+  }
+};
+
+export const addFavorite = async (req, res) => {
+  try {
+    const { routeId } = req.body;
+    if (!routeId) return res.status(400).json({ success: false, data: null, message: 'routeId required', error: 'ROUTE_ID_REQUIRED' });
+
+    if (useMongo()) {
+      await User.findByIdAndUpdate(req.user._id, { $addToSet: { favorites: routeId } });
+      return res.status(200).json({ success: true, data: { routeId }, message: 'Route added to favorites', error: null });
+    }
+    await store.initialize();
+    const user = store.users.find((u) => u._id.toString() === req.user._id.toString());
+    if (!user) return res.status(404).json({ success: false, data: null, message: 'User not found', error: 'NOT_FOUND' });
+    user.favorites = user.favorites || [];
+    if (!user.favorites.includes(routeId)) user.favorites.push(routeId);
+    if (store.persistNow) await store.persistNow();
+    return res.status(200).json({ success: true, data: { favorites: user.favorites }, message: 'Route added to favorites', error: null });
+  } catch (error) {
+    return res.status(500).json({ success: false, data: null, message: 'Failed to add favorite', error: error.message });
+  }
+};
+
+export const removeFavorite = async (req, res) => {
+  try {
+    const { routeId } = req.params;
+    if (useMongo()) {
+      await User.findByIdAndUpdate(req.user._id, { $pull: { favorites: routeId } });
+      return res.status(200).json({ success: true, data: { routeId }, message: 'Route removed from favorites', error: null });
+    }
+    await store.initialize();
+    const user = store.users.find((u) => u._id.toString() === req.user._id.toString());
+    if (user) {
+      user.favorites = (user.favorites || []).filter((id) => id !== routeId && id?.toString() !== routeId?.toString());
+      if (store.persistNow) await store.persistNow();
+    }
+    return res.status(200).json({ success: true, data: { routeId }, message: 'Route removed from favorites', error: null });
+  } catch (error) {
+    return res.status(500).json({ success: false, data: null, message: 'Failed to remove favorite', error: error.message });
+  }
+};

@@ -5,7 +5,7 @@ import Bus from '../models/Bus.js';
 import Trip from '../models/Trip.js';
 import Route from '../models/Route.js';
 import Stop from '../models/Stop.js';
-import memoryStore from '../models/memoryStore.js';
+import { store, useMongo } from '../config/dbMode.js';
 import { calculateETA } from '../utils/etaCalculator.js';
 import { calculateBearing, haversineDistance } from '../utils/haversine.js';
 import { gpsSimulator } from './gpsSimulator.js';
@@ -120,13 +120,13 @@ class SocketManager {
         const routeId = this.tripRouteMap.get(tripId?.toString());
 
         // Update database / memory store
-        if (mongoose.connection.readyState === 1) {
+        if (useMongo()) {
           await Trip.findByIdAndUpdate(tripId, {
             delayMinutes: Number(delayMinutes),
             status: Number(delayMinutes) > 0 ? 'delayed' : 'active',
           });
         } else {
-          const trip = memoryStore.trips.find((t) => t._id.toString() === tripId?.toString());
+          const trip = store.trips.find((t) => t._id.toString() === tripId?.toString());
           if (trip) {
             trip.delayMinutes = Number(delayMinutes);
             trip.status = Number(delayMinutes) > 0 ? 'delayed' : 'active';
@@ -285,20 +285,20 @@ class SocketManager {
     // Carry any reported delay from the active trip
     if (tripId && delayMinutes === 0) {
       let trip = null;
-      if (mongoose.connection.readyState === 1) {
+      if (useMongo()) {
         trip = await Trip.findById(tripId).select('delayMinutes');
       } else {
-        trip = memoryStore.trips.find((t) => t._id.toString() === tripId.toString());
+        trip = store.trips.find((t) => t._id.toString() === tripId.toString());
       }
       if (trip?.delayMinutes > 0) delayMinutes = trip.delayMinutes;
     }
 
     if (routeId) {
       let route = null;
-      if (mongoose.connection.readyState === 1) {
+      if (useMongo()) {
         route = await Route.findById(routeId).populate('stops.stopId');
       } else {
-        route = memoryStore.routes.find((r) => r._id.toString() === routeId.toString());
+        route = store.routes.find((r) => r._id.toString() === routeId.toString());
       }
 
       if (route && route.stops?.length > 0) {
@@ -357,6 +357,14 @@ class SocketManager {
       this.saveBusLocation(busId, tripId, { lat, lng, speed, heading, isSimulated });
     }
 
+    // Crowd density reported by the driver rides along with movement pings
+    if (!this.crowdLevels) this.crowdLevels = new Map(); // busId -> 'low'|'moderate'|'high'
+    const CROWD_LEVELS = ['low', 'moderate', 'high'];
+    const crowdLevel = CROWD_LEVELS.includes(payload.crowdLevel)
+      ? payload.crowdLevel
+      : this.crowdLevels.get(busId?.toString()) || null;
+    if (crowdLevel) this.crowdLevels.set(busId?.toString(), crowdLevel);
+
     // Broadcast passenger:bus_moved to room "route_<routeId>"
     const movePayload = {
       busId,
@@ -369,6 +377,7 @@ class SocketManager {
       eta: calculatedETA + delayMinutes,
       delayMinutes,
       nextStop: nextStopName,
+      crowdLevel,
       isSimulated,
       timestamp: timestamp || new Date().toISOString(),
     };
@@ -396,7 +405,7 @@ class SocketManager {
    */
   async saveBusLocation(busId, tripId, { lat, lng, speed, heading, isSimulated }) {
     try {
-      if (mongoose.connection.readyState === 1) {
+      if (useMongo()) {
         await Bus.findByIdAndUpdate(busId, {
           currentLocation: { lat, lng, speed, heading, updatedAt: new Date() },
           status: 'on_route',
@@ -415,7 +424,7 @@ class SocketManager {
           });
         }
       } else {
-        const bus = memoryStore.buses.find((b) => b._id.toString() === busId.toString());
+        const bus = store.buses.find((b) => b._id.toString() === busId.toString());
         if (bus) {
           bus.currentLocation = { lat, lng, speed, heading, updatedAt: new Date() };
           bus.status = 'on_route';
@@ -423,7 +432,7 @@ class SocketManager {
         }
 
         if (tripId) {
-          const trip = memoryStore.trips.find((t) => t._id.toString() === tripId.toString());
+          const trip = store.trips.find((t) => t._id.toString() === tripId.toString());
           if (trip) {
             trip.currentLocation = { lat, lng, updatedAt: new Date() };
             if (!trip.locationHistory) trip.locationHistory = [];
@@ -460,16 +469,16 @@ class SocketManager {
           };
 
           // Resolve the bus BEFORE emitting so clients can key GPS-lost state per bus
-          if (mongoose.connection.readyState === 1) {
+          if (useMongo()) {
             const trip = await Trip.findById(tripId);
             if (trip?.busId) {
               await Bus.findByIdAndUpdate(trip.busId, { status: 'offline' });
               lostPayload.busId = trip.busId;
             }
           } else {
-            const trip = memoryStore.trips.find((t) => t._id.toString() === tripId);
+            const trip = store.trips.find((t) => t._id.toString() === tripId);
             if (trip?.busId) {
-              const bus = memoryStore.buses.find((b) => b._id.toString() === trip.busId.toString());
+              const bus = store.buses.find((b) => b._id.toString() === trip.busId.toString());
               if (bus) bus.status = 'offline';
               lostPayload.busId = trip.busId;
             }

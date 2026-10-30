@@ -45,6 +45,7 @@ export const DriverTripPage = () => {
   const [heading, setHeading] = useState(65);
   const [currentStopName, setCurrentStopName] = useState('City Center (Tower)');
   const [nextStopName, setNextStopName] = useState('Main Market (Saddar)');
+  const [crowdLevel, setCrowdLevel] = useState(null);
 
   // Modals & Bottom Sheets
   const [showDelayModal, setShowDelayModal] = useState(false);
@@ -252,6 +253,25 @@ export const DriverTripPage = () => {
     }
   };
 
+  // Crowd density reporter — rides along with the next location ping
+  const handleCrowdReport = (level) => {
+    setCrowdLevel(level);
+    if (activeTrip?._id) {
+      socket.emit('driver:location_update', {
+        tripId: activeTrip._id,
+        busId: bus?._id,
+        routeId: route?._id,
+        lat: currentCoords.lat,
+        lng: currentCoords.lng,
+        speed,
+        heading,
+        crowdLevel: level,
+        timestamp: new Date().toISOString(),
+      });
+    }
+    toast.success(`Crowd level reported: ${level}`);
+  };
+
   // END TRIP ACTION
   const handleEndTrip = async () => {
     try {
@@ -432,6 +452,28 @@ export const DriverTripPage = () => {
                 <span className="text-accent-blue mx-2">➔</span>
                 <span className="text-status-yellow truncate">{nextStopName}</span>
               </div>
+            </div>
+          </div>
+
+          {/* Crowd Density Reporter */}
+          <div className="bg-surface p-3.5 rounded-xl border border-border-subtle">
+            <span className="text-[10px] text-text-muted uppercase block mb-2 font-mono">CROWD DENSITY</span>
+            <div className="grid grid-cols-3 gap-2 text-xs font-mono font-semibold">
+              {[
+                { level: 'low', label: '🟢 Light', on: 'bg-status-green text-background border-status-green', off: 'bg-surface-alt text-status-green border-status-green/40 hover:bg-status-green/15' },
+                { level: 'moderate', label: '🟡 Moderate', on: 'bg-status-yellow text-background border-status-yellow', off: 'bg-surface-alt text-status-yellow border-status-yellow/40 hover:bg-status-yellow/15' },
+                { level: 'high', label: '🔴 Packed', on: 'bg-status-red text-white border-status-red', off: 'bg-surface-alt text-status-red border-status-red/40 hover:bg-status-red/15' },
+              ].map((opt) => (
+                <button
+                  key={opt.level}
+                  onClick={() => handleCrowdReport(opt.level)}
+                  className={`py-2.5 rounded-xl border transition-all ${
+                    crowdLevel === opt.level ? opt.on : opt.off
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
 

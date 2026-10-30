@@ -112,6 +112,15 @@ body {
   to { stroke-dashoffset: -24; }
 }
 
+/* Urdu (RTL) typography */
+.font-urdu {
+  font-family: 'Noto Nastaliq Urdu', 'Inter', sans-serif;
+}
+.font-urdu .font-mono,
+.font-urdu .font-syne {
+  font-family: 'Noto Nastaliq Urdu', 'Inter', sans-serif;
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

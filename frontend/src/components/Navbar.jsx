@@ -1,21 +1,27 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Bus, Radio, Bell, Map, Shield, LogOut, Menu, X } from 'lucide-react';
+import { Bus, Radio, Bell, Map, Shield, LogOut, Menu, X, Globe, Route as RouteIcon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../store/authStore.js';
 import useSocket from '../hooks/useSocket.js';
+import { changeLanguage } from '../i18n.js';
 
 export const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
   const { user, isAuthenticated, logout } = useAuthStore();
   const { connected } = useSocket();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const isUrdu = i18n.language === 'ur';
+
   const allLinks = [
-    { label: 'Explore Routes', path: '/routes', icon: Map },
-    { label: 'Service Alerts', path: '/alerts', icon: Bell },
-    { label: 'Driver Cockpit', path: '/driver/trip', icon: Radio, roles: ['driver', 'operator', 'admin'] },
-    { label: 'Operator Room', path: '/operator/dashboard', icon: Shield, roles: ['operator', 'admin'] },
+    { label: t('nav.explore'), path: '/routes', icon: Map },
+    { label: t('nav.alerts'), path: '/alerts', icon: Bell },
+    { label: t('nav.journeys'), path: '/my-journeys', icon: RouteIcon, roles: ['passenger', 'operator', 'admin', 'driver'] },
+    { label: t('nav.driver'), path: '/driver/trip', icon: Radio, roles: ['driver', 'operator', 'admin'] },
+    { label: t('nav.operator'), path: '/operator/dashboard', icon: Shield, roles: ['operator', 'admin'] },
   ];
 
   const role = user?.role;
@@ -26,6 +32,10 @@ export const Navbar = () => {
     setMobileOpen(false);
     await logout();
     navigate('/');
+  };
+
+  const toggleLanguage = () => {
+    changeLanguage(isUrdu ? 'en' : 'ur');
   };
 
   const initials = user?.name
@@ -80,6 +90,16 @@ export const Navbar = () => {
 
         {/* Live Network & Auth Controls */}
         <div className="flex items-center gap-3">
+          {/* Language toggle */}
+          <button
+            onClick={toggleLanguage}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-surface border border-border-subtle text-[11px] font-mono text-text-muted hover:text-white hover:border-accent-blue/40 transition-all"
+            title={isUrdu ? 'Switch to English' : 'اردو میں تبدیل کریں'}
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span>{isUrdu ? 'اردو' : 'EN'}</span>
+          </button>
+
           {/* Socket Heartbeat */}
           <div
             className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface border border-border-subtle text-[11px] font-mono"
@@ -91,16 +111,20 @@ export const Navbar = () => {
               }`}
             />
             <span className={connected ? 'text-status-green' : 'text-status-red'}>
-              {connected ? 'LIVE' : 'RECONNECTING'}
+              {connected ? t('nav.live') : t('nav.reconnecting')}
             </span>
           </div>
 
           {/* User Auth Info / Login */}
           {isAuthenticated && user ? (
             <div className="flex items-center gap-2.5 bg-surface-alt/70 pl-1.5 pr-2 py-1.5 rounded-xl border border-border-subtle">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-accent-blue to-accent-purple flex items-center justify-center text-[11px] font-bold text-background shadow-md">
-                {initials}
-              </div>
+              {user.photoURL ? (
+                <img src={user.photoURL} alt="" className="w-7 h-7 rounded-lg object-cover" />
+              ) : (
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-accent-blue to-accent-purple flex items-center justify-center text-[11px] font-bold text-background shadow-md">
+                  {initials}
+                </div>
+              )}
               <div className="hidden lg:block text-left text-xs font-mono">
                 <div className="text-white font-semibold leading-none max-w-[120px] truncate">{user.name}</div>
                 <div className="text-[10px] text-accent-purple capitalize">{user.role}</div>
@@ -108,7 +132,7 @@ export const Navbar = () => {
               <button
                 onClick={handleLogout}
                 className="p-1.5 hover:text-status-red text-text-muted transition-colors rounded-md hover:bg-white/5"
-                title="Logout"
+                title={t('nav.logout')}
               >
                 <LogOut className="w-3.5 h-3.5" />
               </button>
@@ -118,7 +142,7 @@ export const Navbar = () => {
               onClick={() => navigate('/login')}
               className="px-4 py-2 bg-accent-blue hover:bg-accent-blue/90 text-background font-semibold text-xs rounded-lg transition-all shadow-md shadow-accent-blue/20"
             >
-              Sign In
+              {t('nav.signIn')}
             </button>
           )}
 

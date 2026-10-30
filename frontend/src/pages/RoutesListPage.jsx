@@ -1,16 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bus, MapPin, Clock, ArrowRight, Search, Activity } from 'lucide-react';
+import { Bus, MapPin, Clock, ArrowRight, Search, Activity, Star } from 'lucide-react';
 import { useRouteStore } from '../store/routeStore.js';
+import { useFavoriteStore } from '../store/favoriteStore.js';
+import { toast } from '../store/toastStore.js';
 
 export const RoutesListPage = () => {
   const navigate = useNavigate();
   const { routes, fetchRoutes, loading } = useRouteStore();
+  const { favorites, fetchFavorites, toggleFavorite } = useFavoriteStore();
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchRoutes();
-  }, [fetchRoutes]);
+    fetchFavorites();
+  }, [fetchRoutes, fetchFavorites]);
+
+  const handleToggleFavorite = async (routeId) => {
+    const result = await toggleFavorite(routeId);
+    if (result === 'added') toast.success('Route added to My Routes.');
+    else if (result === 'removed') toast.info('Route removed from My Routes.');
+    else if (result === 'error') toast.error('Could not update favorites.');
+  };
 
   const term = (searchTerm || '').toLowerCase();
   const filteredRoutes = routes.filter((r) =>
@@ -78,6 +89,18 @@ export const RoutesListPage = () => {
                       {route.routeName}
                     </h3>
                   </div>
+                  <button
+                    onClick={() => handleToggleFavorite(route._id)}
+                    className={`p-1.5 rounded-lg transition-all shrink-0 ${
+                      favorites.includes(route._id)
+                        ? 'text-status-yellow bg-status-yellow/10'
+                        : 'text-text-muted hover:text-status-yellow'
+                    }`}
+                    title={favorites.includes(route._id) ? 'Remove from My Routes' : 'Add to My Routes'}
+                    aria-label={favorites.includes(route._id) ? 'Remove from My Routes' : 'Add to My Routes'}
+                  >
+                    <Star className={`w-4 h-4 ${favorites.includes(route._id) ? 'fill-current' : ''}`} />
+                  </button>
                 </div>
 
                 <div className="bg-surface-alt/60 rounded-xl p-3 mb-4 text-xs font-mono border border-border-subtle/50 space-y-1.5">
