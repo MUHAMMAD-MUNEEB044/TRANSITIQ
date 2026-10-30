@@ -9,6 +9,7 @@ import { ENV } from './src/config/env.js';
 import { connectDB } from './src/config/db.js';
 import { store, DB_MODE, getModeLabel } from './src/config/dbMode.js';
 import { socketManager } from './src/sockets/socketManager.js';
+import { gpsSimulator } from './src/sockets/gpsSimulator.js';
 import { setIO } from './src/sockets/broadcaster.js';
 
 // Route imports
@@ -96,6 +97,14 @@ app.use((err, req, res, next) => {
 const startServer = async () => {
   await connectDB();
   await store.initialize();
+
+  // Live fleet: every seeded bus starts moving on its real corridor with a
+  // staggered position. Disable with FLEET_SIMULATION=off.
+  if (process.env.FLEET_SIMULATION !== 'off') {
+    gpsSimulator.startFleet(store, (payload) => {
+      socketManager.processLocationUpdate(payload);
+    });
+  }
 
   const PORT = ENV.PORT;
   httpServer.listen(PORT, () => {
